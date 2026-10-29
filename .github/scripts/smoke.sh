@@ -4,9 +4,23 @@ OUT="$GITHUB_WORKSPACE/ci-out"
 mkdir -p "$OUT"
 R="$OUT/resultado.txt"
 log() { echo "$*" | tee -a "$R"; }
-shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
+shot() { dismiss; adb exec-out screencap -p > "$OUT/$1.png"; }
+
+# Fecha avisos do próprio emulador ("X isn't responding") que bloqueiam os toques.
+dismiss() {
+  for k in 1 2 3; do
+    adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1
+    adb pull /sdcard/ui.xml "$OUT/ui.xml" > /dev/null 2>&1
+    grep -q "responding" "$OUT/ui.xml" 2>/dev/null || return 0
+    local xy
+    xy=$(python3 "$GITHUB_WORKSPACE/.github/scripts/find.py" "$OUT/ui.xml" "Wait")
+    [ -n "$xy" ] && adb shell input tap $xy && log "(aviso do sistema fechado)"
+    sleep 2
+  done
+}
 
 tap_text() {
+  dismiss
   adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1
   adb pull /sdcard/ui.xml "$OUT/ui.xml" > /dev/null 2>&1
   local xy
@@ -17,6 +31,10 @@ tap_text() {
 }
 
 adb wait-for-device
+# Espera o sistema terminar de iniciar e assentar.
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+sleep 45
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
@@ -57,6 +75,8 @@ for tab in "Caneta" "Ajustes"; do tap_text "$tab" || true; sleep 3; shot "09-aba
 
 if adb shell pidof com.inkflow > /dev/null; then log "app rodando: SIM"; else log "app rodando: NÃO (fechou)"; fi
 adb logcat -d > "$OUT/logcat.txt"
-grep -E "FATAL EXCEPTION|AndroidRuntime" -A25 "$OUT/logcat.txt" > "$OUT/crash.txt" || true
+# Só conta falhas do próprio InkFlow.
+grep -E "FATAL EXCEPTION" -A30 "$OUT/logcat.txt" | grep -B2 -A28 "com.inkflow" > "$OUT/crash.txt" || true
+grep -E "ANR in com.inkflow" -A10 "$OUT/logcat.txt" >> "$OUT/crash.txt" || true
 if [ -s "$OUT/crash.txt" ]; then log "CRASH ENCONTRADO (ver crash.txt)"; else log "nenhum crash no logcat"; fi
 exit 0
