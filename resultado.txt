@@ -1,0 +1,10 @@
+instalar versão anterior: Success
+instalar/atualizar versão nova: Success
+versão instalada:     versionName=0.1.7
+ok: tocou em 'Novo caderno' (80 128)
+ok: tocou em 'Criar' (1713 1294)
+ok: tocou em 'Sem título' (332 854)
+ok: tocou em 'Caneta' (675 124)
+FALHA: botão 'Ajustes' não encontrado
+app rodando: SIM
+nenhum crash no logcat
