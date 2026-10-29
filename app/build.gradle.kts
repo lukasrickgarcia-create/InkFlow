@@ -14,8 +14,10 @@ android {
         // O Vaio TL10 roda Android 13 (API 33). minSdk 26 mantém o app instalável em tablets mais antigos.
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Cada compilação no GitHub ganha um número maior: o Android sempre aceita como atualização.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0
+        versionCode = 100 + build
+        versionName = "0.1.$build"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

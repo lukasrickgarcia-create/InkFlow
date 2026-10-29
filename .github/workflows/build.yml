@@ -1,7 +1,8 @@
-name: Compilar APK
+name: Compilar e testar APK
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,58 +13,93 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-
-      - name: Localizar o projeto
-        run: |
-          if [ -f InkFlow.zip ]; then
-            unzip -q -o InkFlow.zip -d _src
-            echo "PROJ=_src/InkFlow" >> "$GITHUB_ENV"
-          elif [ -f InkFlow/gradlew ]; then
-            echo "PROJ=InkFlow" >> "$GITHUB_ENV"
-          else
-            echo "PROJ=." >> "$GITHUB_ENV"
-          fi
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
-
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Compilar o app
-        working-directory: ${{ env.PROJ }}
         run: |
-          echo "SDK: $ANDROID_HOME"
           chmod +x gradlew
           set -o pipefail
-          ./gradlew assembleDebug --console=plain 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/InkFlow.apk"
+          ./gradlew assembleDebug testDebugUnitTest --console=plain 2>&1 | tee build.log
 
-      - name: Guardar o erro no repositório (branch ci-log)
+      - name: Guardar o erro (branch ci-log)
         if: failure()
         run: |
-          cd "$GITHUB_WORKSPACE"
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          grep -E "^e: |error:|What went wrong|FAILURE|Caused by|> " build.log > erros.txt || true
-          cp build.log /tmp/build.log; cp erros.txt /tmp/erros.txt
-          git checkout --orphan ci-log
-          git rm -rf . > /dev/null
+          grep -E "^e: |error:|What went wrong|FAILED|Caused by|> " build.log > erros.txt || true
+          cp build.log erros.txt /tmp/
+          git config user.name github-actions; git config user.email actions@github.com
+          git checkout --orphan ci-log; git rm -rfq .
           cp /tmp/build.log /tmp/erros.txt .
-          git add build.log erros.txt
-          git commit -m "log do build ${{ github.run_number }}"
-          git push -f origin ci-log
+          git add build.log erros.txt; git commit -qm "log ${{ github.run_number }}"; git push -qf origin ci-log
 
-      - name: Testes de lógica
-        working-directory: ${{ env.PROJ }}
-        continue-on-error: true
-        run: ./gradlew testDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Publicar o APK para download
-        uses: softprops/action-gh-release@v2
+  test:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: new
+
+      - name: Baixar a versão anterior (teste de atualização)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download -R ${{ github.repository }} -p InkFlow.apk -D old || echo "sem versão anterior"
+
+      - name: Habilitar KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Testar no emulador (tablet Android 13)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 10
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/smoke.sh
+
+      - name: Publicar resultados do teste (branch ci-test)
+        if: always()
+        run: |
+          mkdir -p ci-out; cp -r ci-out /tmp/ci-out
+          git config user.name github-actions; git config user.email actions@github.com
+          git checkout --orphan ci-test; git rm -rfq .
+          cp -r /tmp/ci-out/* . 2>/dev/null || true
+          rm -f ui.xml
+          git add -A; git commit -qm "teste ${{ github.run_number }}" || true; git push -qf origin ci-test
+
+      - name: Reprovar se houve crash ou falha de instalação
+        run: |
+          cat ci-out/resultado.txt
+          ! grep -qE "CRASH|NÃO \(fechou\)|Failure" ci-out/resultado.txt
+
+  release:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+      - run: mv app-debug.apk InkFlow.apk
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: InkFlow – build ${{ github.run_number }}
+          name: InkFlow – build ${{ github.run_number }} (testada no emulador)
           body: Baixe o InkFlow.apk abaixo no tablet e instale.
           files: InkFlow.apk
