@@ -69,6 +69,8 @@ class InkCanvasView @JvmOverloads constructor(
         fun onUndoGesture() {}
         fun onRedoGesture() {}
         fun onZoomChanged(relativeZoom: Float) {}
+        /** A faixa de apoio da mão foi arrastada (fração da altura da tela onde ela começa). */
+        fun onPalmGuardMoved(topFraction: Float) {}
     }
 
     var listener: Listener? = null
@@ -85,7 +87,12 @@ class InkCanvasView @JvmOverloads constructor(
         set(value) {
             field = value
             applyFilterParams()
+            if (mode != Mode.GUARD_DRAG) guardTopFraction = value.palmGuardTop
+            invalidate()
         }
+
+    /** Início da faixa de apoio da mão, como fração da altura da View. */
+    private var guardTopFraction = InputConfig().palmGuardTop
 
     /** Cor ao redor da folha (acompanha o tema). */
     var surroundColor: Int = 0xFFE7E5E0.toInt()
@@ -172,13 +179,32 @@ class InkCanvasView @JvmOverloads constructor(
         color = 0xFF3B6FD8.toInt()
         pathEffect = DashPathEffect(floatArrayOf(5f * density, 4f * density), 0f)
     }
+    private val guardFill = Paint().apply {
+        style = Paint.Style.FILL
+        color = 0x1A5A6B8C
+    }
+    private val guardLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.2f * density
+        color = 0x885A6B8C.toInt()
+        pathEffect = DashPathEffect(floatArrayOf(6f * density, 5f * density), 0f)
+    }
+    private val guardHandle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = 0xCC5A6B8C.toInt()
+    }
+    private val guardText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xAA5A6B8C.toInt()
+        textSize = 12f * density
+        textAlign = Paint.Align.CENTER
+    }
     private val selectionFill = Paint().apply {
         style = Paint.Style.FILL
         color = 0x143B6FD8
     }
 
     // ---------------------------------------------------------------- estado de entrada
-    private enum class Mode { IDLE, DRAW, ERASE, LASSO, MOVE_SELECTION, PAN, GESTURE, WAIT_UP }
+    private enum class Mode { IDLE, DRAW, ERASE, LASSO, MOVE_SELECTION, PAN, GESTURE, WAIT_UP, GUARD_DRAG }
     private enum class PKind { STYLUS, ERASER_TIP, FINGER, PALM }
     private enum class Role { DRAW, NAVIGATE, NONE }
 
@@ -188,6 +214,8 @@ class InkCanvasView @JvmOverloads constructor(
     private var downTime = 0L
     private var downX = 0f
     private var downY = 0f
+    private var downMajor = 0f
+    private val mmPx = xdpi / 25.4f
     private var lastX = 0f
     private var lastY = 0f
     private val ignored = HashSet<Int>()
@@ -584,6 +612,20 @@ class InkCanvasView @JvmOverloads constructor(
             canvas.drawRect(r, selectionFill)
             canvas.drawRect(r, selectionStroke)
         }
+        if (guardActive()) drawGuard(canvas)
+    }
+
+    private fun guardActive() = inputConfig.palmGuard && toolConfig.tool != Tool.HAND
+    private fun guardTopPx() = height * guardTopFraction
+
+    private fun drawGuard(canvas: Canvas) {
+        val top = guardTopPx()
+        canvas.drawRect(0f, top, width.toFloat(), height.toFloat(), guardFill)
+        canvas.drawLine(0f, top, width.toFloat(), top, guardLine)
+        val hw = 28f * density
+        val hh = 5f * density
+        canvas.drawRoundRect(width / 2f - hw, top - hh / 2f, width / 2f + hw, top + hh / 2f, hh, hh, guardHandle)
+        canvas.drawText("Apoio da mão — arraste a barra para ajustar", width / 2f, top + 26f * density, guardText)
     }
 
     private fun drawLive(canvas: Canvas) {
@@ -735,6 +777,21 @@ class InkCanvasView @JvmOverloads constructor(
 
     private fun onPointerDown(e: MotionEvent, i: Int) {
         val id = e.getPointerId(i)
+        if (guardActive()) {
+            val y = e.getY(i)
+            val top = guardTopPx()
+            if (mode == Mode.IDLE && abs(y - top) < 22f * density) {
+                // Segurou a barra da faixa de apoio: arrastar ajusta a altura.
+                mode = Mode.GUARD_DRAG
+                activeId = id
+                return
+            }
+            if (y > top) {
+                // Tudo que começa dentro da faixa de apoio é ignorado (palma, pulso, dedos).
+                ignored.add(id)
+                return
+            }
+        }
         val kind = classify(e, i)
         if (kind == PKind.PALM) {
             ignored.add(id)
@@ -764,6 +821,13 @@ class InkCanvasView @JvmOverloads constructor(
                 if (kind == PKind.FINGER && tentative && young) {
                     cancelActive()
                     startGesture(e)
+                } else if (kind == PKind.FINGER && tentative && inputConfig.palmRejection && newContactIsPen(e, i)) {
+                    // A palma encostou primeiro e começou um "traço"; a caneta chegou agora.
+                    // Descarta o que a palma desenhou e passa a escrever com o novo contato.
+                    val palmId = activeId
+                    cancelActive()
+                    ignored.add(palmId)
+                    startTool(e, i, eraserTip = false, tentative = true)
                 } else {
                     ignored.add(id)
                 }
@@ -782,7 +846,7 @@ class InkCanvasView @JvmOverloads constructor(
                 PKind.PALM -> ignored.add(id)
             }
             Mode.GESTURE -> gMaxPointers = max(gMaxPointers, countUsable(e))
-            Mode.WAIT_UP -> ignored.add(id)
+            Mode.WAIT_UP, Mode.GUARD_DRAG -> ignored.add(id)
         }
     }
 
@@ -821,7 +885,23 @@ class InkCanvasView @JvmOverloads constructor(
         mode = Mode.GESTURE
     }
 
+    /**
+     * Com uma caneta capacitiva, caneta e palma chegam como "dedo". Decide se o contato novo é a
+     * caneta e o atual é a palma: a ponta da caneta fica sempre ACIMA da mão, costuma ser um
+     * contato menor e a palma quase não se desloca.
+     */
+    private fun newContactIsPen(e: MotionEvent, i: Int): Boolean {
+        val newY = e.getY(i)
+        val newMajor = e.getTouchMajor(i)
+        val above = newY < lastY - 4f * mmPx
+        val smaller = downMajor > 0f && newMajor > 0f && newMajor < downMajor * 0.7f
+        val oldStill = hypot(lastX - downX, lastY - downY) < 6f * mmPx
+        val notBelow = newY <= lastY + 2f * mmPx
+        return above || smaller || (oldStill && notBelow)
+    }
+
     private fun startTool(e: MotionEvent, i: Int, eraserTip: Boolean, tentative: Boolean) {
+        downMajor = e.getTouchMajor(i)
         activeId = e.getPointerId(i)
         this.tentative = tentative
         downTime = e.eventTime
@@ -889,6 +969,12 @@ class InkCanvasView @JvmOverloads constructor(
                 invalidate()
                 throttledRender()
             }
+            Mode.GUARD_DRAG -> {
+                val i = e.findPointerIndex(activeId)
+                if (i < 0 || height <= 0) return
+                guardTopFraction = (e.getY(i) / height).coerceIn(0.25f, 0.95f)
+                invalidate()
+            }
             else -> Unit
         }
     }
@@ -940,6 +1026,11 @@ class InkCanvasView @JvmOverloads constructor(
                 mode = next
             }
             Mode.WAIT_UP -> mode = next
+            Mode.GUARD_DRAG -> if (id == activeId) {
+                activeId = -1
+                mode = next
+                listener?.onPalmGuardMoved(guardTopFraction)
+            }
             else -> Unit
         }
     }
@@ -1255,7 +1346,8 @@ class InkCanvasView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "InkCanvasView"
-        private const val TENTATIVE_MS = 160L
+        /** Dois dedos que tocam quase juntos = zoom. Palma seguida de caneta costuma demorar mais. */
+        private const val TENTATIVE_MS = 90L
         private const val TAP_MS = 280L
         private const val PREDICT_MS = 16f
         private const val MIN_STEP_PX = 0.75f

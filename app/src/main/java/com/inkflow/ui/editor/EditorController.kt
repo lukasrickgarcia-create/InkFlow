@@ -86,6 +86,16 @@ class EditorController(private val c: AppContainer, val notebookId: String) {
         override fun onZoomChanged(relativeZoom: Float) {
             zoom = relativeZoom
         }
+
+        override fun onPalmGuardMoved(topFraction: Float) {
+            c.settings.updateInput { it.copy(palmGuardTop = topFraction) }
+        }
+    }
+
+    fun togglePalmGuard() {
+        val on = !c.settings.current.input.palmGuard
+        c.settings.updateInput { it.copy(palmGuard = on) }
+        notice = if (on) "Apoio da mão ligado: toques na faixa de baixo são ignorados." else "Apoio da mão desligado."
     }
 
     init {

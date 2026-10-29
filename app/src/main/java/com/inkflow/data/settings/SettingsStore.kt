@@ -67,6 +67,8 @@ class SettingsStore(context: Context) {
                 prediction = prefs.getBoolean("prediction", di.prediction),
                 pressureMode = PressureMode.of(prefs.getString("pressureMode", null)),
                 tapGestures = prefs.getBoolean("tapGestures", di.tapGestures),
+                palmGuard = prefs.getBoolean("palmGuard", di.palmGuard),
+                palmGuardTop = prefs.getFloat("palmGuardTop", di.palmGuardTop),
                 stylusDetected = prefs.getBoolean("stylusDetected", di.stylusDetected),
             ),
             tools = ToolConfig(
@@ -94,6 +96,8 @@ class SettingsStore(context: Context) {
             putBoolean("prediction", s.input.prediction)
             putString("pressureMode", s.input.pressureMode.name)
             putBoolean("tapGestures", s.input.tapGestures)
+            putBoolean("palmGuard", s.input.palmGuard)
+            putFloat("palmGuardTop", s.input.palmGuardTop)
             putBoolean("stylusDetected", s.input.stylusDetected)
             putString("tool", s.tools.tool.name)
             putInt("penColor", s.tools.penColor)

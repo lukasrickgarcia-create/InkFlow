@@ -185,6 +185,8 @@ fun EditorScreen(
                     exportLauncher.launch(if (annotated) "$base.pdf" else "$base (original).pdf")
                 },
                 onFit = controller::fitWidth,
+                palmGuard = settings.input.palmGuard,
+                onPalmGuard = controller::togglePalmGuard,
             )
             if (controller.selectionCount > 0) {
                 Spacer(Modifier.height(8.dp))
@@ -283,6 +285,8 @@ private fun EditorToolbar(
     onTemplate: () -> Unit,
     onExport: (annotated: Boolean) -> Unit,
     onFit: () -> Unit,
+    palmGuard: Boolean,
+    onPalmGuard: () -> Unit,
 ) {
     var more by remember { mutableStateOf(false) }
     Surface(
@@ -312,6 +316,7 @@ private fun EditorToolbar(
             ToolButton(ToolIcons.Eraser, "Borracha (E)", tool == Tool.ERASER) { onTool(Tool.ERASER) }
             ToolButton(ToolIcons.Lasso, "Seleção (S)", tool == Tool.LASSO) { onTool(Tool.LASSO) }
             ToolButton(Icons.Outlined.PanTool, "Mover página (H)", tool == Tool.HAND) { onTool(Tool.HAND) }
+            ToolButton(ToolIcons.PalmGuard, "Apoio da mão", palmGuard) { onPalmGuard() }
             ToolbarDivider()
             val quick = if (tool == Tool.HIGHLIGHTER) HighlighterColors.take(5) else InkColors.take(5)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(horizontal = 6.dp)) {

@@ -96,4 +96,25 @@ object ToolIcons {
         moveTo(9f, 14.6f)
         curveTo(7.5f, 16.5f, 10.5f, 18f, 8.5f, 21f)
     }
+
+    /** Apoio da mão: folha com faixa protegida embaixo. */
+    val PalmGuard: ImageVector = icon("PalmGuard") {
+        moveTo(5f, 3.5f)
+        lineTo(19f, 3.5f)
+        lineTo(19f, 20.5f)
+        lineTo(5f, 20.5f)
+        close()
+        moveTo(5f, 13.5f)
+        lineTo(19f, 13.5f)
+        moveTo(8f, 17f)
+        lineTo(10f, 15.5f)
+        moveTo(11f, 18.5f)
+        lineTo(14f, 15.5f)
+        moveTo(15f, 18.5f)
+        lineTo(17f, 16.5f)
+        moveTo(8f, 7.5f)
+        lineTo(15f, 7.5f)
+        moveTo(8f, 10.5f)
+        lineTo(13f, 10.5f)
+    }
 }

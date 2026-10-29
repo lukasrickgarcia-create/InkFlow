@@ -124,6 +124,11 @@ fun SettingsScreen(container: AppContainer, onMessage: (String) -> Unit) {
                     settings.input.palmRejection,
                 ) { v -> store.updateInput { it.copy(palmRejection = v) } }
                 SwitchRow(
+                    "Apoio da mão",
+                    "Mostra uma faixa na parte de baixo da tela onde todo toque é ignorado — apoie a mão ali. Arraste a barra no editor para ajustar a altura.",
+                    settings.input.palmGuard,
+                ) { v -> store.updateInput { it.copy(palmGuard = v) } }
+                SwitchRow(
                     "Gestos de toque",
                     "Toque com dois dedos desfaz; com três dedos refaz.",
                     settings.input.tapGestures,

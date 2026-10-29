@@ -81,5 +81,9 @@ data class InputConfig(
     val prediction: Boolean = true,
     val pressureMode: PressureMode = PressureMode.AUTO,
     val tapGestures: Boolean = true,
+    /** Faixa na parte de baixo da tela onde toques são ignorados (para apoiar a mão). */
+    val palmGuard: Boolean = true,
+    /** Onde a faixa começa, como fração da altura da tela. */
+    val palmGuardTop: Float = 0.62f,
     val stylusDetected: Boolean = false,
 )
