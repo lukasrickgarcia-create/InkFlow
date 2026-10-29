@@ -151,7 +151,7 @@ fun DiagnosticsScreen(container: AppContainer) {
                         }
                     }) { Text("Salvar") }
                 }
-                if (pen.isNotEmpty() && palm.isNotEmpty() && percentile(palm, 0.10f) <= percentile(pen, 0.95f)) {
+                if (pen.isNotEmpty() && palm.isNotEmpty() && (percentile(palm, 0.10f) ?: 0f) <= (percentile(pen, 0.95f) ?: 0f)) {
                     Text(
                         "Os tamanhos da caneta e da palma se sobrepõem: este digitalizador não permite separá-los pelo tamanho. " +
                             "A rejeição vai depender só das regras de múltiplos toques.",
