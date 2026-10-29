@@ -1,0 +1,54 @@
+name: Compilar APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Localizar o projeto
+        run: |
+          if [ -f InkFlow.zip ]; then
+            unzip -q -o InkFlow.zip -d _src
+            echo "PROJ=_src/InkFlow" >> "$GITHUB_ENV"
+          elif [ -f InkFlow/gradlew ]; then
+            echo "PROJ=InkFlow" >> "$GITHUB_ENV"
+          else
+            echo "PROJ=." >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar o app
+        working-directory: ${{ env.PROJ }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/InkFlow.apk"
+
+      - name: Testes de lógica
+        working-directory: ${{ env.PROJ }}
+        continue-on-error: true
+        run: ./gradlew testDebugUnitTest
+
+      - name: Publicar o APK para download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: InkFlow – build ${{ github.run_number }}
+          body: Baixe o InkFlow.apk abaixo no tablet e instale.
+          files: InkFlow.apk
